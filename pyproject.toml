@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coformai-sdk"
+version = "0.1.0"
+description = "Typed sync and async SDK for the Coform Agentic Framework"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.28,<1", "pydantic>=2.10,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "build>=1.2", "ruff>=0.9", "mypy>=1.14"]
+docs = ["mkdocs>=1.6,<2", "mkdocstrings[python]>=0.28,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coformai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP"]
+ignore = ["UP028"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/coformai"]

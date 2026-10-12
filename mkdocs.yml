@@ -1,0 +1,51 @@
+site_name: Coform Python SDK
+site_description: Division management and invocation SDK for the Coform Agentic Framework
+theme:
+  name: mkdocs
+nav:
+  - Home: index.md
+  - Installation and keys: getting-started.md
+  - Division map walkthrough: maps.md
+  - Integrations: integrations.md
+  - Invocation streams: invocations.md
+  - Lifecycle and operations: lifecycle.md
+  - Coverage matrix: coverage.md
+  - API reference:
+      - Public exports: reference.md
+      - Clients: reference/client.md
+      - Configuration: reference/config.md
+      - Graph mutations: reference/graph.md
+      - Inputs and events: reference/models.md
+      - Streaming: reference/streaming.md
+      - Exceptions: reference/errors.md
+      - Sync resources: reference/resources.md
+      - Async resources: reference/async_resources.md
+  - Dashboard authentication: dashboard-auth.md
+  - Troubleshooting: troubleshooting.md
+  - Contributing: contributing.md
+  - Verification: verification.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_signature_annotations: true
+            members_order: source
+            filters: ["!^_"]
+            inherited_members: true
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    unrecognized_links: warn
+markdown_extensions:
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true

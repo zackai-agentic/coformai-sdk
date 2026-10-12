@@ -1,0 +1,13 @@
+.venv/
+.wheel-env/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+.ruff_cache/
+.mypy_cache/
+dist/
+site/
+.env
+*.egg-info/

@@ -1,0 +1,3 @@
+# Synchronous resources
+
+::: coformai.resources
