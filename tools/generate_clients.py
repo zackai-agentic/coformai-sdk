@@ -44,6 +44,7 @@ def generate(async_mode: bool) -> str:
     resources = {"divisions": ("DivisionResource", "divisions"), "swift_agents": ("EntityResource", "swift-agents"), "flow_agents": ("EntityResource", "flow-agents"), "swift_chains": ("EntityResource", "swift-chains"), "flow_chains": ("EntityResource", "flow-chains"), "agentic_functions": ("EntityResource", "agentic-functions"), "sources": ("CRUDResource", "sources"), "model_connections": ("CRUDResource", "models-connection"), "schedules": ("CRUDResource", "division-triggers"), "swift_chain_steps": ("CRUDResource", "swift-chain-steps"), "flow_chain_steps": ("CRUDResource", "flow-chain-steps"), "dependencies": ("CRUDResource", "swift-chain-dependencies"), "integrations": ("IntegrationResource", "api-integrations"), "graph": ("GraphResource", "graph-mutations"), "uploads": ("UploadResource", ""), "catalogs": ("CatalogResource", ""), "monitoring": ("MonitoringResource", "")}
     for attr, cls in {"swift_agents": "AgentResource", "flow_agents": "AgentResource", "swift_chains": "SwiftChainResource", "flow_chains": "FlowChainResource", "agentic_functions": "FunctionResource", "dependencies": "DependencyResource"}.items():
         resources[attr] = (cls, resources[attr][1])
+    resources["sources"] = ("SourceResource", "sources")
     for attr, (cls, path) in resources.items():
         code += f'        self.{attr} = r.{prefix}{cls}(self, self._org + "{path}")\n'
     for attr, path in {"actions": "actions", "static_augmentations": "static-augmentations", "dynamic_augmentations": "dynamic-augmentations"}.items():

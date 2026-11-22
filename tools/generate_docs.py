@@ -41,6 +41,8 @@ for cls, attrs in class_resources.items():
 for method in ["validate", "commit"]:
     row("Atomic graph " + method, "graph." + method, "POST /clients/{org}/graph-mutations/" + method + "/", "root write + each operation's grants")
 for method, route, verb, grant in [
+    ("sources.upload", "clients/{org}/sources/", "POST multipart", "knowledge:write"),
+    ("sources.upload(source_id=...)", "clients/{org}/sources/{id}/", "PATCH multipart", "knowledge:write"),
     ("uploads.rest", "clients/{org}/unstructured-data/", "POST multipart", "integrations:write"),
     ("uploads.openapi_string", "clients/{org}/integrations/openapi-string/", "POST", "integrations:write"),
     ("uploads.mcp", "clients/{org}/mcp/", "POST", "integrations:write"),

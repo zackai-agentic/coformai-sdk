@@ -147,6 +147,7 @@ def method(name, signature, result, expression, summary, before="", asynchronous
     described = {p.split(":")[0] for p in parameters}
     descriptions = {"payload": "Builder, typed request, or raw server payload.", "division_id": "Persisted Division UUID.", "session_id": "Session identifier; None requests a generated session where supported.", "inputs": "Typed multimodal items or corresponding wire mappings.", "entity_response_stream_option": "Response framing mode; defaults to cumulative_stream.", "approved": "Explicit approval decision.", "approval_id": "Approval identifier from the awaiting_approval event.", "session_params": "Session parameter values; defaults to an empty mapping.", "input_inquiry": "Optional text inquiry.", "include_entity_inputs_in_response": "Include entity inputs in events; defaults to False.", "pairs": "History pairs to append.", "agent_id": "Persisted agent UUID.", "needing_id": "Persisted needing UUID."}
     descriptions.update({"path": "Local file to read and transmit; the handle closes after the request.", "name": "Required integration name shown in the dashboard.", "description": "Required integration description shown in the dashboard.", "base_url": "Optional REST base URL override; defaults to None.", "trust_url": "Dashboard URL validation choice; defaults to False.", "update": "Existing-name policy: True replaces, False creates a copy, None retains the dashboard conflict response.", "openapi_string": "Complete OpenAPI/Swagger specification as a JSON or YAML string.", "configuration": "MCP servers mapping or raw JSON string; parsed locally before transmission.", "message_id": "Persisted message UUID associated with a background run."})
+    descriptions.update({"source_id": "Existing source UUID to replace its file in place; None creates a source.", "enable_semantic_retrieval": "Enable semantic indexing; defaults to False.", "embedding_model_connection_id": "Organization embedding-model connection UUID; None leaves selection to the server.", "max_tokens_in_chunk": "Positive semantic chunk size; defaults to 1024 and is omitted for nonsemantic sources."})
     for arg in parsed.args + parsed.kwonlyargs:
         if arg.arg != "self" and arg.arg not in described:
             parameters.append(arg.arg + ": " + descriptions.get(arg.arg, "Server field; see the endpoint guide for its contract."))
@@ -197,6 +198,27 @@ def generate(asynchronous=False):
             params = {{}}
 
 '''
+    code += f'class {prefix}SourceResource({prefix}CRUDResource):\n    """Knowledge Base source CRUD and multipart file ingestion."""\n\n'
+    source_before = '''        if not name.strip():
+            raise ValueError("Source name must not be blank")
+        if enable_semantic_retrieval and max_tokens_in_chunk <= 0:
+            raise ValueError("max_tokens_in_chunk must be positive")
+        metadata = {"name": name, "client": self._client.configuration.organization_id, "enable_semantic_retrieval": str(enable_semantic_retrieval).lower()}
+        if description is not None:
+            metadata["description"] = description
+        if enable_semantic_retrieval:
+            metadata["max_tokens_in_chunk"] = str(max_tokens_in_chunk)
+            if embedding_model_connection_id is not None:
+                metadata["embedding_model_connection"] = embedding_model_connection_id
+        file_path = Path(path)
+        with file_path.open("rb") as handle:
+'''
+    source_upload = method("upload", 'self, path: str | Path, *, name: str, source_id: str | None = None, description: str | None = None, enable_semantic_retrieval: bool = False, embedding_model_connection_id: str | None = None, max_tokens_in_chunk: int = 1024', "Any", 'self._client._request("PATCH" if source_id is not None else "POST", self._detail(source_id) if source_id is not None else self._path, data=metadata, files={"file": (file_path.name, handle, "application/octet-stream")})', 'Create a Knowledge Base source or replace an existing source file in place. Requires knowledge:write. Upload starts asynchronous extraction/indexing; poll sources.get(source_id) for completed or failed status. No automatic retry or polling occurs. Embedding and chunk settings are sent only when semantic retrieval is enabled.', asynchronous=asynchronous)
+    source_upload = source_upload.replace('        return ', source_before + '            return ')
+    source_upload = source_upload.replace('name: Required integration name shown in the dashboard.', 'name: Required Knowledge Base source name shown in the dashboard.')
+    source_upload = source_upload.replace('description: Required integration description shown in the dashboard.', 'description: Optional source description; None omits the field.')
+    source_upload = source_upload.replace('            OSError:', '            ValueError: Source name is blank or semantic chunk size is not positive.\n            OSError:')
+    code += source_upload
     code += f'class {prefix}OperationsSourceResource({prefix}Resource):\n    """Operations sources: list/create collection, patch/delete detail only."""\n\n'
     for name in ["list", "create", "update", "delete"]:
         spec = list(METHODS[name])

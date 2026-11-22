@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add synchronous and asynchronous `sources.upload()` for Knowledge Base files,
+  optional semantic retrieval configuration, and organization-scoped multipart
+  ingestion. Replace files in place with `source_id` while retaining graph links.
+  Preserve asynchronous extraction status and explicit no-retry behavior.
+
 ## 0.1.0
 
 - Initial synchronous and asynchronous dashboard/core SDK with typed graph mutations.

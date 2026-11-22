@@ -183,6 +183,8 @@ root, normally `/api/`. Core routes use the configured core root.
 | Read step dependency links using chain_id query parameter. | `dependencies.chain_dependencies` | `GET /clients/{org}/swift-chain-dependencies/chain_dependencies/` | `chains:read` |
 | Atomic graph validate | `graph.validate` | `POST /clients/{org}/graph-mutations/validate/` | `root write + each operation's grants` |
 | Atomic graph commit | `graph.commit` | `POST /clients/{org}/graph-mutations/commit/` | `root write + each operation's grants` |
+| sources.upload | `sources.upload` | `POST multipart /clients/{org}/sources/` | `knowledge:write` |
+| sources.upload(source id=...) | `sources.upload(source_id=...)` | `PATCH multipart /clients/{org}/sources/{id}/` | `knowledge:write` |
 | uploads.rest | `uploads.rest` | `POST multipart /clients/{org}/unstructured-data/` | `integrations:write` |
 | uploads.openapi string | `uploads.openapi_string` | `POST /clients/{org}/integrations/openapi-string/` | `integrations:write` |
 | uploads.mcp | `uploads.mcp` | `POST /clients/{org}/mcp/` | `integrations:write` |

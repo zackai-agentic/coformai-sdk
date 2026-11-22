@@ -92,6 +92,37 @@ source_previews = client.catalogs.source_content(n=200)
 
 Content preview requires `n`, the maximum number of content characters to return
 per source. Model reads require `agents:read`; source reads require `knowledge:read`.
+
+## Upload a Knowledge Base source
+
+```python
+source = client.sources.upload(
+    "billing-policy.txt",
+    name="Billing Policy",
+    description="Approved demonstration billing rules",
+    enable_semantic_retrieval=True,
+    embedding_model_connection_id=embedding_connection_id,
+    max_tokens_in_chunk=512,
+)
+status = client.sources.get(source["source_id"])
+```
+
+The upload uses multipart `file`, `name`, organization `client`, and source metadata on the organization's
+`sources/` route. It requires `knowledge:write`. Extraction and indexing are
+asynchronous: poll the returned source ID for `status="completed"` or `"failed"`
+before attaching it to a Division. The SDK never sets a successful processing
+status, retries a POST, or polls automatically. Disable semantic retrieval for
+compact static context; embedding and chunk fields are then omitted. The server
+determines supported file types and embedding-model availability. AsyncCoform
+provides the same method with local file reading off the event loop.
+
+Pass `source_id=existing_source_id` to replace an existing source's file with a
+multipart PATCH while preserving graph references. The same `name` and semantic
+retrieval options apply; omitted metadata fields remain under server control.
+The current ingestion backend also requires an active embedding model configured
+for the organization before processing semantic sources. Per-source metadata does
+not configure that organization setting. Configure it in Knowledge Base first.
+
 REST specification replacement can remove endpoint/parameter definitions and
 therefore requires `integrations:delete` for those removals. Existing wrappers
 or agents whose endpoint references are cleared also require their write grants.

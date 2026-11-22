@@ -195,6 +195,66 @@ class AsyncCRUDResource(AsyncResource):
             params = {}
 
 
+class AsyncSourceResource(AsyncCRUDResource):
+    """Knowledge Base source CRUD and multipart file ingestion."""
+
+    async def upload(
+        self,
+        path: str | Path,
+        *,
+        name: str,
+        source_id: str | None = None,
+        description: str | None = None,
+        enable_semantic_retrieval: bool = False,
+        embedding_model_connection_id: str | None = None,
+        max_tokens_in_chunk: int = 1024,
+    ) -> Any:
+        """Create a Knowledge Base source or replace an existing source file in place. Requires knowledge:write. Upload starts asynchronous extraction/indexing; poll sources.get(source_id) for completed or failed status. No automatic retry or polling occurs. Embedding and chunk settings are sent only when semantic retrieval is enabled.
+
+        Args:
+            path: Local file to read and transmit; the handle closes after the request.
+            name: Required Knowledge Base source name shown in the dashboard.
+            source_id: Existing source UUID to replace its file in place; None creates a source.
+            description: Optional source description; None omits the field.
+            enable_semantic_retrieval: Enable semantic indexing; defaults to False.
+            embedding_model_connection_id: Organization embedding-model connection UUID; None leaves selection to the server.
+            max_tokens_in_chunk: Positive semantic chunk size; defaults to 1024 and is omitted for nonsemantic sources.
+
+        Returns:
+            Parsed server response with field names preserved.
+
+        Raises:
+            APIStatusError: Server rejected authentication, permissions, or input.
+            APIConnectionError: Network failure; no automatic retry occurs.
+            ValueError: Source name is blank or semantic chunk size is not positive.
+            OSError: The local file could not be read.
+        """
+        if not name.strip():
+            raise ValueError("Source name must not be blank")
+        if enable_semantic_retrieval and max_tokens_in_chunk <= 0:
+            raise ValueError("max_tokens_in_chunk must be positive")
+        metadata = {
+            "name": name,
+            "client": self._client.configuration.organization_id,
+            "enable_semantic_retrieval": str(enable_semantic_retrieval).lower(),
+        }
+        if description is not None:
+            metadata["description"] = description
+        if enable_semantic_retrieval:
+            metadata["max_tokens_in_chunk"] = str(max_tokens_in_chunk)
+            if embedding_model_connection_id is not None:
+                metadata["embedding_model_connection"] = embedding_model_connection_id
+        file_path = Path(path)
+        # Read disk off the event loop; HTTPX multipart accepts the resulting bytes.
+        handle = await asyncio.to_thread(file_path.read_bytes)
+        return await self._client._request(
+            "PATCH" if source_id is not None else "POST",
+            self._detail(source_id) if source_id is not None else self._path,
+            data=metadata,
+            files={"file": (file_path.name, handle, "application/octet-stream")},
+        )
+
+
 class AsyncOperationsSourceResource(AsyncResource):
     """Operations sources: list/create collection, patch/delete detail only."""
 
