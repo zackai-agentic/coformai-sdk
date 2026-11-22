@@ -32,7 +32,16 @@ from .graph import (
     ReplaceCollectionMutation,
     StepDependencyRef,
 )
-from .models import HistoryPair, InputItem, InvocationEvent, InvocationResult, Outcome, StreamMode
+from .models import (
+    ContextCompacting,
+    HistoryPair,
+    InputItem,
+    InvocationEvent,
+    InvocationResult,
+    Outcome,
+    StreamMode,
+    TrimPastContext,
+)
 from .streaming import AsyncInvocationStream, InvocationStream
 
 __version__ = "0.1.0"
@@ -53,6 +62,8 @@ __all__ = [
     "Coform",
     "CoformError",
     "Configuration",
+    "ContextCompacting",
+    "TrimPastContext",
     "ConflictError",
     "EntityRef",
     "GraphMutationBuilder",

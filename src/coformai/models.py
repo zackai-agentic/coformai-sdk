@@ -199,3 +199,50 @@ class InvocationResult(WireModel):
             self.outcome = terminal[event.result]
         if event.result == "AGENT_LOOP_AWAITING_APPROVAL":
             self.approval_id = content.get("approval_id")
+
+
+TrimStep = Literal["trim_turns_from_start", "trim_most_recent_input_text"]
+
+
+class TrimPastContext(BaseModel):
+    """Trim selected sources in priority order until the final text input fits."""
+
+    model_config = ConfigDict(extra="forbid")
+    method: Literal["trim_past_context"] = "trim_past_context"
+    target_percent: int = Field(default=80, strict=True, ge=5, le=95, multiple_of=5)
+    submethods: list[TrimStep] = Field(
+        default_factory=lambda: ["trim_turns_from_start", "trim_most_recent_input_text"],
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def _check_priority(self) -> TrimPastContext:
+        if len(self.submethods) != len(set(self.submethods)):
+            raise ValueError("Each selected submethod must appear once.")
+        return self
+
+
+class ContextCompacting(BaseModel):
+    """Policy for one entity's model-visible text in the current session."""
+
+    model_config = ConfigDict(extra="forbid")
+    trigger: Literal["before_request", "after_context_error"] = "after_context_error"
+    allowance_percent: int = Field(default=100, strict=True, ge=10, le=100, multiple_of=5)
+    methods: list[TrimPastContext] = Field(
+        default_factory=lambda: [TrimPastContext()], min_length=1, max_length=1
+    )
+
+    @model_validator(mode="after")
+    def _check_targets(self) -> ContextCompacting:
+        if self.trigger == "after_context_error" and self.allowance_percent != 100:
+            raise ValueError("After-error checks use the full input limit.")
+        if any(method.target_percent >= self.allowance_percent for method in self.methods):
+            raise ValueError("The shrink target must be below the allowance.")
+        return self
+
+    def entity_fields(self, *, enabled: bool = True) -> dict[str, Any]:
+        """Build fields for create, update, or a staged graph mutation."""
+        return {
+            "automatic_context_compacting_enabled": enabled,
+            "context_compacting": self.model_dump(mode="json"),
+        }

@@ -49,3 +49,22 @@ python -m build
 
 The documentation is built locally in `site/`; wheels are written to `dist/`.
 Nothing is published, and this repository has no configured remote.
+
+## Automatic context compacting
+
+Use the same policy with Swift agents, Flow agents, agentic functions, and Division graph mutations.
+
+```python
+from coformai import ContextCompacting, TrimPastContext
+
+policy = ContextCompacting(
+    trigger="before_request",
+    allowance_percent=90,
+    methods=[TrimPastContext(target_percent=70)],
+)
+client.swift_agents.update(agent_id, **policy.entity_fields())
+await async_client.agentic_functions.update(function_id, **policy.entity_fields())
+```
+
+The selected model needs a configured input limit on Models. The invocation stream reports
+`AUTOMATIC_CONTEXT_COMPACTING` with before and after text usage and the applied edits.
