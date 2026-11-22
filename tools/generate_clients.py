@@ -75,7 +75,8 @@ def generate(async_mode: bool) -> str:
 '''
     code += f'''
     {keyword} request(self, method: str, path: str, *, service: str = "dashboard",
-                      json: Any = None, params: Mapping[str, Any] | None = None) -> Any:
+                      json: Any = None, params: Mapping[str, Any] | None = None,
+                      operation_id: str | UUID | None = None) -> Any:
         """Make an explicit request for a server route not covered by a convenience method.
 
         Args:
@@ -84,6 +85,7 @@ def generate(async_mode: bool) -> str:
             service: dashboard (default) or core.
             json: JSON payload; defaults to None.
             params: Query parameters; defaults to None.
+            operation_id: Optional UUID identifying one dashboard write.
 
         Returns:
             Parsed JSON, text for non-JSON responses, or None for HTTP 204.
@@ -93,16 +95,44 @@ def generate(async_mode: bool) -> str:
             APIConnectionError: Transport failure. No request is retried.
             ValueError: A URL escapes the configured service root.
         """
-        return {wait}self._request(method, path, service=service, json=json, params=params)
+        return {wait}self._request(method, path, service=service, json=json, params=params, operation_id=operation_id)
 
-    {keyword} _request(self, method: str, path: str, *, service: str = "dashboard", **kwargs: Any) -> Any:
+    {keyword} get_operation(self, operation_id: str | UUID) -> Any:
+        """Read the dashboard receipt for an operation in this organization.
+
+        Args:
+            operation_id: UUID from a managed write or an interrupted request.
+
+        Returns:
+            The current receipt, including phase, resource_id and error_code.
+        """
+        return {wait}self._request("GET", self._org + f"operations/{{UUID(str(operation_id))}}/")
+
+    {keyword} reconcile_operation(self, operation_id: str | UUID) -> Any:
+        """Ask the dashboard to reconcile a deployment or continue a supported source batch.
+
+        Args:
+            operation_id: UUID from the original receipt. The server checks the caller's grants.
+
+        Returns:
+            The updated receipt. A pending phase may need another status check.
+        """
+        identifier = UUID(str(operation_id))
+        return {wait}self._request("POST", self._org + f"operations/{{identifier}}/", operation_id=identifier)
+
+    {keyword} _request(self, method: str, path: str, *, service: str = "dashboard",
+                       operation_id: str | UUID | None = None, **kwargs: Any) -> Any:
+        url = self.configuration.url(service, path)
+        identifier = _operation_id(service, method, url, kwargs.get("json"), operation_id, self.configuration.organization_id)
+        if identifier is not None:
+            kwargs["headers"] = {{**kwargs.get("headers", {{}}), "X-Operation-ID": identifier}}
         try:
-            response = {wait}self._http.request(method, self.configuration.url(service, path), **kwargs)
+            response = {wait}self._http.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Request timed out; reconcile state before retrying") from exc
+            raise APITimeoutError("Request timed out; reconcile state before retrying", operation_id=identifier) from exc
         except httpx.RequestError as exc:
-            raise APIConnectionError("Request failed; reconcile state before retrying") from exc
-        check_status(response)
+            raise APIConnectionError("Request failed; reconcile state before retrying", operation_id=identifier) from exc
+        check_status(response, operation_id=identifier)
         if response.status_code == 204 or not response.content:
             return None
         if "json" in response.headers.get("content-type", ""):
@@ -131,13 +161,33 @@ if __name__ == "__main__":
     header = '''"""HTTPX clients for dashboard management and mounted core execution routes."""
 from __future__ import annotations
 from typing import Any, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 import httpx
 from . import resources, async_resources
 from .config import Configuration
 from .errors import APIConnectionError, APITimeoutError, check_status
 from .models import StreamMode
 from .streaming import InvocationStream, AsyncInvocationStream
+
+
+def _operation_id(service: str, method: str, url: str, payload: Any,
+                  explicit: str | UUID | None, organization_id: str) -> str | None:
+    if service != "dashboard" or method.upper() not in {"POST", "PATCH", "PUT", "DELETE"}:
+        if explicit is not None:
+            raise ValueError("operation_id applies only to dashboard writes")
+        return None
+    if explicit is not None:
+        return str(UUID(str(explicit)))
+    if urlsplit(url).path.rstrip("/").endswith("/graph-mutations/commit") and isinstance(payload, Mapping):
+        correlation = payload.get("request_id")
+        if isinstance(correlation, str) and correlation:
+            try:
+                return str(UUID(correlation))
+            except ValueError:
+                # Older graph clients also use text correlation IDs.
+                return str(uuid5(NAMESPACE_URL, f"coformai/{organization_id}/graph/{correlation}"))
+    return str(uuid4())
 
 '''
     (ROOT / "src/coformai/client.py").write_text(header + generate(False) + "\n" + generate(True), encoding="utf-8")

@@ -50,7 +50,6 @@ def test_semantic_source_upload_preserves_bytes_and_does_not_forge_ready_status(
     assert len(calls) == 1
     assert calls[0].url.path == "/prefix/api/clients/org/sources/"
     assert parts(calls[0]) == {
-        "client": b"org",
         "name": b"Billing policy",
         "description": b"Demo rules",
         "enable_semantic_retrieval": b"true",
@@ -75,7 +74,6 @@ async def test_async_nonsemantic_source_omits_embedding_and_chunk_metadata(tmp_p
             path, name="Charter", embedding_model_connection_id="unused", max_tokens_in_chunk=0
         )
     assert parts(calls[0]) == {
-        "client": b"org",
         "name": b"Charter",
         "enable_semantic_retrieval": b"false",
         "file": b"Short service charter",

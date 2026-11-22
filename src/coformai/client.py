@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import httpx
 
@@ -13,6 +14,33 @@ from .config import Configuration
 from .errors import APIConnectionError, APITimeoutError, check_status
 from .models import StreamMode
 from .streaming import AsyncInvocationStream, InvocationStream
+
+
+def _operation_id(
+    service: str,
+    method: str,
+    url: str,
+    payload: Any,
+    explicit: str | UUID | None,
+    organization_id: str,
+) -> str | None:
+    if service != "dashboard" or method.upper() not in {"POST", "PATCH", "PUT", "DELETE"}:
+        if explicit is not None:
+            raise ValueError("operation_id applies only to dashboard writes")
+        return None
+    if explicit is not None:
+        return str(UUID(str(explicit)))
+    if urlsplit(url).path.rstrip("/").endswith("/graph-mutations/commit") and isinstance(
+        payload, Mapping
+    ):
+        correlation = payload.get("request_id")
+        if isinstance(correlation, str) and correlation:
+            try:
+                return str(UUID(correlation))
+            except ValueError:
+                # Older graph clients also use text correlation IDs.
+                return str(uuid5(NAMESPACE_URL, f"coformai/{organization_id}/graph/{correlation}"))
+    return str(uuid4())
 
 
 class Coform:
@@ -171,6 +199,7 @@ class Coform:
         service: str = "dashboard",
         json: Any = None,
         params: Mapping[str, Any] | None = None,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Make an explicit request for a server route not covered by a convenience method.
 
@@ -180,6 +209,7 @@ class Coform:
             service: dashboard (default) or core.
             json: JSON payload; defaults to None.
             params: Query parameters; defaults to None.
+            operation_id: Optional UUID identifying one dashboard write.
 
         Returns:
             Parsed JSON, text for non-JSON responses, or None for HTTP 204.
@@ -189,16 +219,66 @@ class Coform:
             APIConnectionError: Transport failure. No request is retried.
             ValueError: A URL escapes the configured service root.
         """
-        return self._request(method, path, service=service, json=json, params=params)
+        return self._request(
+            method, path, service=service, json=json, params=params, operation_id=operation_id
+        )
 
-    def _request(self, method: str, path: str, *, service: str = "dashboard", **kwargs: Any) -> Any:
+    def get_operation(self, operation_id: str | UUID) -> Any:
+        """Read the dashboard receipt for an operation in this organization.
+
+        Args:
+            operation_id: UUID from a managed write or an interrupted request.
+
+        Returns:
+            The current receipt, including phase, resource_id and error_code.
+        """
+        return self._request("GET", self._org + f"operations/{UUID(str(operation_id))}/")
+
+    def reconcile_operation(self, operation_id: str | UUID) -> Any:
+        """Ask the dashboard to reconcile a deployment or continue a supported source batch.
+
+        Args:
+            operation_id: UUID from the original receipt. The server checks the caller's grants.
+
+        Returns:
+            The updated receipt. A pending phase may need another status check.
+        """
+        identifier = UUID(str(operation_id))
+        return self._request(
+            "POST", self._org + f"operations/{identifier}/", operation_id=identifier
+        )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        service: str = "dashboard",
+        operation_id: str | UUID | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        url = self.configuration.url(service, path)
+        identifier = _operation_id(
+            service,
+            method,
+            url,
+            kwargs.get("json"),
+            operation_id,
+            self.configuration.organization_id,
+        )
+        if identifier is not None:
+            kwargs["headers"] = {**kwargs.get("headers", {}), "X-Operation-ID": identifier}
         try:
-            response = self._http.request(method, self.configuration.url(service, path), **kwargs)
+            response = self._http.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Request timed out; reconcile state before retrying") from exc
+            raise APITimeoutError(
+                "Request timed out; reconcile state before retrying", operation_id=identifier
+            ) from exc
         except httpx.RequestError as exc:
-            raise APIConnectionError("Request failed; reconcile state before retrying") from exc
-        check_status(response)
+            raise APIConnectionError(
+                "Request failed; reconcile state before retrying", operation_id=identifier
+            ) from exc
+        check_status(response, operation_id=identifier)
         if response.status_code == 204 or not response.content:
             return None
         if "json" in response.headers.get("content-type", ""):
@@ -383,6 +463,7 @@ class AsyncCoform:
         service: str = "dashboard",
         json: Any = None,
         params: Mapping[str, Any] | None = None,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Make an explicit request for a server route not covered by a convenience method.
 
@@ -392,6 +473,7 @@ class AsyncCoform:
             service: dashboard (default) or core.
             json: JSON payload; defaults to None.
             params: Query parameters; defaults to None.
+            operation_id: Optional UUID identifying one dashboard write.
 
         Returns:
             Parsed JSON, text for non-JSON responses, or None for HTTP 204.
@@ -401,20 +483,66 @@ class AsyncCoform:
             APIConnectionError: Transport failure. No request is retried.
             ValueError: A URL escapes the configured service root.
         """
-        return await self._request(method, path, service=service, json=json, params=params)
+        return await self._request(
+            method, path, service=service, json=json, params=params, operation_id=operation_id
+        )
+
+    async def get_operation(self, operation_id: str | UUID) -> Any:
+        """Read the dashboard receipt for an operation in this organization.
+
+        Args:
+            operation_id: UUID from a managed write or an interrupted request.
+
+        Returns:
+            The current receipt, including phase, resource_id and error_code.
+        """
+        return await self._request("GET", self._org + f"operations/{UUID(str(operation_id))}/")
+
+    async def reconcile_operation(self, operation_id: str | UUID) -> Any:
+        """Ask the dashboard to reconcile a deployment or continue a supported source batch.
+
+        Args:
+            operation_id: UUID from the original receipt. The server checks the caller's grants.
+
+        Returns:
+            The updated receipt. A pending phase may need another status check.
+        """
+        identifier = UUID(str(operation_id))
+        return await self._request(
+            "POST", self._org + f"operations/{identifier}/", operation_id=identifier
+        )
 
     async def _request(
-        self, method: str, path: str, *, service: str = "dashboard", **kwargs: Any
+        self,
+        method: str,
+        path: str,
+        *,
+        service: str = "dashboard",
+        operation_id: str | UUID | None = None,
+        **kwargs: Any,
     ) -> Any:
+        url = self.configuration.url(service, path)
+        identifier = _operation_id(
+            service,
+            method,
+            url,
+            kwargs.get("json"),
+            operation_id,
+            self.configuration.organization_id,
+        )
+        if identifier is not None:
+            kwargs["headers"] = {**kwargs.get("headers", {}), "X-Operation-ID": identifier}
         try:
-            response = await self._http.request(
-                method, self.configuration.url(service, path), **kwargs
-            )
+            response = await self._http.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Request timed out; reconcile state before retrying") from exc
+            raise APITimeoutError(
+                "Request timed out; reconcile state before retrying", operation_id=identifier
+            ) from exc
         except httpx.RequestError as exc:
-            raise APIConnectionError("Request failed; reconcile state before retrying") from exc
-        check_status(response)
+            raise APIConnectionError(
+                "Request failed; reconcile state before retrying", operation_id=identifier
+            ) from exc
+        check_status(response, operation_id=identifier)
         if response.status_code == 204 or not response.content:
             return None
         if "json" in response.headers.get("content-type", ""):

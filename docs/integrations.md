@@ -58,6 +58,12 @@ Optional `mcp_oauth` values support provider OAuth configuration. Headers and
 provider credentials are transmitted to the dashboard; supply them through
 environment variables in runnable scripts.
 
+For `apiKey`, supply the provider key in `headers`. Set `api_key_name` on the
+server entry when multiple headers are present and the key has a custom name.
+For HTTP bearer or basic authentication, supply the provider's `Authorization`
+header. For `s2s-jwt`, supply `jwt_private_key`, `jwt_issuer`, and
+`jwt_audience` on the server entry. The dashboard signs the provider token.
+
 The dashboard contacts configured MCP servers to discover tools. OAuth providers
 may return start/authorization links and pending status until a user completes
 provider interaction. The SDK returns those response fields unchanged. Open the
@@ -96,6 +102,8 @@ per source. Model reads require `agents:read`; source reads require `knowledge:r
 ## Upload a Knowledge Base source
 
 ```python
+from time import monotonic, sleep
+
 source = client.sources.upload(
     "billing-policy.txt",
     name="Billing Policy",
@@ -104,11 +112,27 @@ source = client.sources.upload(
     embedding_model_connection_id=embedding_connection_id,
     max_tokens_in_chunk=512,
 )
-status = client.sources.get(source["source_id"])
+if "operation" in source:
+    receipt = source["operation"]
+    deadline = monotonic() + 60
+    while receipt["phase"] not in {"succeeded", "failed", "not_started"}:
+        if monotonic() >= deadline:
+            raise TimeoutError(f"Upload still pending: {receipt['operation_id']}")
+        sleep(1)
+        receipt = client.get_operation(receipt["operation_id"])
+    if receipt["phase"] != "succeeded":
+        raise RuntimeError(receipt["error_code"])
+    source_id = receipt["resource_id"]
+else:
+    source_id = source["source_id"]
+status = client.sources.get(source_id)["status"]
 ```
 
-The upload uses multipart `file`, `name`, organization `client`, and source metadata on the organization's
-`sources/` route. It requires `knowledge:write`. Extraction and indexing are
+The upload sends multipart `file`, `name`, and source metadata to the organization's
+`sources/` route. The dashboard derives ownership from that URL. Uploads require
+`knowledge:write`. Reading the source or its receipt requires `knowledge:read`.
+For managed uploads, check the receipt's `phase` and `error_code` if processing fails.
+Extraction and indexing are
 asynchronous: poll the returned source ID for `status="completed"` or `"failed"`
 before attaching it to a Division. The SDK never sets a successful processing
 status, retries a POST, or polls automatically. Disable semantic retrieval for

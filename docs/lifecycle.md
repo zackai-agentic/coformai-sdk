@@ -10,8 +10,11 @@ summary = client.divisions.summary(division_id)
 requirements = client.divisions.session_parameters(division_id)
 readiness = client.divisions.deployability(division_id)
 preview = client.divisions.deployability_preview(division_name="Draft", division_type="automation")
-client.divisions.deploy(division_id)
-client.divisions.undeploy(division_id)
+deployment = client.divisions.deploy(division_id)
+if "operation" in deployment:
+    receipt = deployment["operation"]
+    if receipt["phase"] in {"prepared", "submitting", "pending", "running", "uncertain"}:
+        receipt = client.reconcile_operation(receipt["operation_id"])
 ```
 
 Reads and readiness previews require `agents:read`; deploy/undeploy require
@@ -19,7 +22,37 @@ Reads and readiness previews require `agents:read`; deploy/undeploy require
 coordinates runtime and messaging lifecycle. API-key deployment uses a fresh
 server-only 60-second JWT per downstream request; the SDK never receives it.
 
+### Managed writes and recovery
+
+Both clients send a fresh `X-Operation-ID` UUID with each dashboard write.
+To track a write across a process restart, persist a UUID first and pass it as
+`operation_id=` to the mutation. Graph commits reuse the builder's request UUID
+by default. The SDK preserves a text graph request ID and derives a stable
+operation UUID for it within the organization.
+
+When the dashboard fences a write, the response can contain only an `operation`
+receipt. Check its `phase` before starting dependent work. A terminal receipt
+reports `succeeded`, `failed`, or `not_started`. For failures inspect
+`error_code`. HTTP 202 means the operation still needs a later status check.
+Use `client.get_operation(operation_id)` to read the receipt with the relevant
+resource read grant. For a pending division deployment or undeployment, use
+`reconcile_operation()` with `agents:write` to refresh downstream status.
+Both methods are awaitable on `AsyncCoform`.
+
+Timeouts, connection failures, and HTTP errors on dashboard writes expose the
+sent UUID as `exc.operation_id`. If the outcome is unclear, look up that UUID
+before submitting more work. Each call sends the mutation once. Endpoints that
+do not use the managed-write protocol may have no receipt.
+
 ## Schedules and scheduled inputs
+
+For an individual trigger, pass its division to `schedules.create`. Use the
+returned `trigger_id` to read, change, or delete that trigger.
+
+```python
+trigger = client.schedules.create(division_id=division_id, name="Review", trigger_type="manual")
+client.schedules.update(trigger["trigger_id"], enabled=False)
+```
 
 Patch Division scheduling fields through the graph or `divisions.update()`.
 The graph supports `schedule_enabled`, `schedule_start_from`,
@@ -56,6 +89,8 @@ with several files in one request; the convenience method uploads one file.
 ## Needings and monitoring
 
 ```python
+from time import time
+
 needing_payloads = [{"id": "connect-accounts", "type": "integration",
                     "title": "Connect accounts", "description": "Provide an account integration."}]
 needings = client.needings.list(division_id)
@@ -66,7 +101,8 @@ client.needings.reopen(division_id, needing_id)
 
 schedules = client.monitoring.schedules(limit=20)
 runs = client.monitoring.background_runs(division_id=division_id)
-work = client.monitoring.work_items()
+end = int(time())
+work = client.monitoring.work_items(from_ts=end - 3600, to_ts=end)
 source_health = client.monitoring.sources()
 messages = client.monitoring.messages()
 ```

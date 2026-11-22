@@ -14,6 +14,7 @@ import json
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -93,10 +94,17 @@ class AsyncCRUDResource(AsyncResource):
         """
         return await self._client._request("GET", self._detail(resource_id))
 
-    async def create(self, data: Mapping[str, Any] | None = None, **fields: Any) -> Any:
+    async def create(
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Create a resource from serializer fields. Requires write; returns the server object.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -108,14 +116,22 @@ class AsyncCRUDResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
-        return await self._client._request("POST", self._path, json=_payload(data, fields))
+        return await self._client._request(
+            "POST", self._path, json=_payload(data, fields), operation_id=operation_id
+        )
 
     async def update(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Partially update a resource. Omitted fields remain unchanged; explicit nulls are preserved. Requires write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -129,15 +145,24 @@ class AsyncCRUDResource(AsyncResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "PATCH", self._detail(resource_id), json=_payload(data, fields)
+            "PATCH",
+            self._detail(resource_id),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def replace(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Replace a resource using its full serializer payload. Requires write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -151,13 +176,14 @@ class AsyncCRUDResource(AsyncResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "PUT", self._detail(resource_id), json=_payload(data, fields)
+            "PUT", self._detail(resource_id), json=_payload(data, fields), operation_id=operation_id
         )
 
-    async def delete(self, resource_id: str) -> Any:
+    async def delete(self, resource_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Permanently delete a resource. Requires delete; a 204 response returns None. Use graph detach for map removal.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
 
         Returns:
@@ -167,7 +193,9 @@ class AsyncCRUDResource(AsyncResource):
             APIStatusError: Server rejected authentication, permissions, or input.
             APIConnectionError: Network failure; no automatic retry occurs.
         """
-        return await self._client._request("DELETE", self._detail(resource_id))
+        return await self._client._request(
+            "DELETE", self._detail(resource_id), operation_id=operation_id
+        )
 
     async def iter_all(self, **query: Any) -> AsyncIterator[dict[str, Any]]:
         """Iterate plain lists or DRF paginated results, validating every next URL.
@@ -208,10 +236,12 @@ class AsyncSourceResource(AsyncCRUDResource):
         enable_semantic_retrieval: bool = False,
         embedding_model_connection_id: str | None = None,
         max_tokens_in_chunk: int = 1024,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Create a Knowledge Base source or replace an existing source file in place. Requires knowledge:write. Upload starts asynchronous extraction/indexing; poll sources.get(source_id) for completed or failed status. No automatic retry or polling occurs. Embedding and chunk settings are sent only when semantic retrieval is enabled.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             path: Local file to read and transmit; the handle closes after the request.
             name: Required Knowledge Base source name shown in the dashboard.
             source_id: Existing source UUID to replace its file in place; None creates a source.
@@ -235,7 +265,6 @@ class AsyncSourceResource(AsyncCRUDResource):
             raise ValueError("max_tokens_in_chunk must be positive")
         metadata = {
             "name": name,
-            "client": self._client.configuration.organization_id,
             "enable_semantic_retrieval": str(enable_semantic_retrieval).lower(),
         }
         if description is not None:
@@ -252,6 +281,7 @@ class AsyncSourceResource(AsyncCRUDResource):
             self._detail(source_id) if source_id is not None else self._path,
             data=metadata,
             files={"file": (file_path.name, handle, "application/octet-stream")},
+            operation_id=operation_id,
         )
 
 
@@ -273,10 +303,17 @@ class AsyncOperationsSourceResource(AsyncResource):
         """
         return await self._client._request("GET", self._path, params=query)
 
-    async def create(self, data: Mapping[str, Any] | None = None, **fields: Any) -> Any:
+    async def create(
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Create a resource from serializer fields. Requires write; returns the server object. Monitoring read applies to list; agent write/delete and affected integration grants apply to mutations.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -288,14 +325,22 @@ class AsyncOperationsSourceResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
-        return await self._client._request("POST", self._path, json=_payload(data, fields))
+        return await self._client._request(
+            "POST", self._path, json=_payload(data, fields), operation_id=operation_id
+        )
 
     async def update(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Partially update a resource. Omitted fields remain unchanged; explicit nulls are preserved. Requires write. Monitoring read applies to list; agent write/delete and affected integration grants apply to mutations.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -309,13 +354,17 @@ class AsyncOperationsSourceResource(AsyncResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "PATCH", self._detail(resource_id), json=_payload(data, fields)
+            "PATCH",
+            self._detail(resource_id),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
-    async def delete(self, resource_id: str) -> Any:
+    async def delete(self, resource_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Permanently delete a resource. Requires delete; a 204 response returns None. Use graph detach for map removal. Monitoring read applies to list; agent write/delete and affected integration grants apply to mutations.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
 
         Returns:
@@ -325,7 +374,9 @@ class AsyncOperationsSourceResource(AsyncResource):
             APIStatusError: Server rejected authentication, permissions, or input.
             APIConnectionError: Network failure; no automatic retry occurs.
         """
-        return await self._client._request("DELETE", self._detail(resource_id))
+        return await self._client._request(
+            "DELETE", self._detail(resource_id), operation_id=operation_id
+        )
 
 
 class AsyncDivisionResource(AsyncCRUDResource):
@@ -420,11 +471,17 @@ class AsyncDivisionResource(AsyncCRUDResource):
         )
 
     async def deploy(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Deploy after the dashboard readiness check; downstream failures are reported. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -438,15 +495,24 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "deploy/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "deploy/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def undeploy(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Undeploy and stop runtime availability. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -460,15 +526,24 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "undeploy/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "undeploy/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def duplicate(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Duplicate a Division; additional grants apply to cloned/reused resources. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -482,15 +557,24 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "duplicate/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "duplicate/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def schedule_preview(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Preview schedule occurrences without saving schedule settings. Requires agents:read.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -504,15 +588,24 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "schedule-preview/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "schedule-preview/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def trigger(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Trigger dashboard automation. Prefer core invocations for event streaming. Requires inference:execute.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -526,7 +619,10 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "trigger/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "trigger/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def scheduled_input_status(self, resource_id: str, **query: Any) -> Any:
@@ -602,11 +698,17 @@ class AsyncDivisionResource(AsyncCRUDResource):
         )
 
     async def transfer_resolve(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Resolve imported source mappings and acknowledged dependencies. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -620,15 +722,23 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "transfer-resolve/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "transfer-resolve/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def deployability_preview(
-        self, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Validate an unsaved Division readiness payload. Requires agents:read.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -641,13 +751,23 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._path + "deployability-preview/", json=_payload(data, fields)
+            "POST",
+            self._path + "deployability-preview/",
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
-    async def compose(self, data: Mapping[str, Any] | None = None, **fields: Any) -> Any:
+    async def compose(
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Compose a Division and nested entities; each created resource requires its own write grant. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -660,13 +780,20 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._path + "compose/", json=_payload(data, fields)
+            "POST", self._path + "compose/", json=_payload(data, fields), operation_id=operation_id
         )
 
-    async def import_preview(self, data: Mapping[str, Any] | None = None, **fields: Any) -> Any:
+    async def import_preview(
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Preview an import before apply; preserve digest/revision values for apply. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -679,13 +806,23 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._path + "import-preview/", json=_payload(data, fields)
+            "POST",
+            self._path + "import-preview/",
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
-    async def import_apply(self, data: Mapping[str, Any] | None = None, **fields: Any) -> Any:
+    async def import_apply(
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Apply an import with matching preview digests/revisions; additional resource grants apply. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -698,7 +835,10 @@ class AsyncDivisionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._path + "import-apply/", json=_payload(data, fields)
+            "POST",
+            self._path + "import-apply/",
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
 
@@ -706,11 +846,17 @@ class AsyncIntegrationResource(AsyncCRUDResource):
     """Integration resource operations. See the operation matrix for supported routes."""
 
     async def duplicate(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Duplicate an integration and its endpoint definitions. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -724,15 +870,24 @@ class AsyncIntegrationResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "duplicate/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "duplicate/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def refresh_tools(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Refresh remote MCP tools; this contacts the configured server. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -746,15 +901,24 @@ class AsyncIntegrationResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "refresh-tools/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "refresh-tools/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def oauth_start(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Return an OAuth provider link for browser interaction. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -768,15 +932,24 @@ class AsyncIntegrationResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "oauth/start/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "oauth/start/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def oauth_initiate(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Initiate the provider authorization flow. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -790,15 +963,24 @@ class AsyncIntegrationResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "oauth/initiate/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "oauth/initiate/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def discover_tools(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Discover MCP tools after authorization. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -812,7 +994,10 @@ class AsyncIntegrationResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "discover-tools/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "discover-tools/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
 
@@ -820,11 +1005,16 @@ class AsyncDependencyResource(AsyncCRUDResource):
     """Dependency resource operations. See the operation matrix for supported routes."""
 
     async def manage_dependencies(
-        self, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Replace specified consumers' dependency on a provider step. Requires chains:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -837,15 +1027,23 @@ class AsyncDependencyResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._path + "manage_dependencies/", json=_payload(data, fields)
+            "POST",
+            self._path + "manage_dependencies/",
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def remove_dependencies(
-        self, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Remove specified consumer/provider dependency links. Requires chains:delete.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
 
@@ -858,7 +1056,10 @@ class AsyncDependencyResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "DELETE", self._path + "remove_dependencies/", json=_payload(data, fields)
+            "DELETE",
+            self._path + "remove_dependencies/",
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
     async def chain_dependencies(self, **query: Any) -> Any:
@@ -933,11 +1134,17 @@ class AsyncAgentResource(AsyncCRUDResource):
         )
 
     async def duplicate(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Duplicate an agent/function where supported; nested resources require corresponding grants. Requires resource write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -951,7 +1158,10 @@ class AsyncAgentResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "duplicate/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "duplicate/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
 
@@ -1051,11 +1261,17 @@ class AsyncFunctionResource(AsyncCRUDResource):
     """Function resource operations. See the operation matrix for supported routes."""
 
     async def duplicate(
-        self, resource_id: str, data: Mapping[str, Any] | None = None, **fields: Any
+        self,
+        resource_id: str,
+        data: Mapping[str, Any] | None = None,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
     ) -> Any:
         """Duplicate an agent/function where supported; nested resources require corresponding grants. Requires resource write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             resource_id: Persisted UUID/ID from a server response.
             data: Optional mapping of writable server fields.
             fields: Additional fields; duplicate mapping keys are rejected.
@@ -1069,7 +1285,10 @@ class AsyncFunctionResource(AsyncCRUDResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", self._detail(resource_id, "duplicate/"), json=_payload(data, fields)
+            "POST",
+            self._detail(resource_id, "duplicate/"),
+            json=_payload(data, fields),
+            operation_id=operation_id,
         )
 
 
@@ -1077,11 +1296,15 @@ class AsyncGraphResource(AsyncResource):
     """Atomic graph validation/commit endpoints; every affected resource is authorized."""
 
     async def validate(
-        self, payload: GraphMutationBuilder | GraphMutationRequest | Mapping[str, Any]
+        self,
+        payload: GraphMutationBuilder | GraphMutationRequest | Mapping[str, Any],
+        *,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Validate a graph request. IDs/revisions are correlation fields, not automatic retry guarantees.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             payload: Builder, typed request, or raw server payload.
 
         Returns:
@@ -1100,14 +1323,19 @@ class AsyncGraphResource(AsyncResource):
             self._path + "validate/",
             json=data,
             headers={"Idempotency-Key": key} if key else {},
+            operation_id=operation_id,
         )
 
     async def commit(
-        self, payload: GraphMutationBuilder | GraphMutationRequest | Mapping[str, Any]
+        self,
+        payload: GraphMutationBuilder | GraphMutationRequest | Mapping[str, Any],
+        *,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Commit a graph request. IDs/revisions are correlation fields, not automatic retry guarantees.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             payload: Builder, typed request, or raw server payload.
 
         Returns:
@@ -1126,6 +1354,7 @@ class AsyncGraphResource(AsyncResource):
             self._path + "commit/",
             json=data,
             headers={"Idempotency-Key": key} if key else {},
+            operation_id=operation_id,
         )
 
 
@@ -1150,10 +1379,13 @@ class AsyncSettingsResource(AsyncResource):
             "GET", self._path.format(division_id=division_id), params=fields
         )
 
-    async def create(self, division_id: str, **fields: Any) -> Any:
+    async def create(
+        self, division_id: str, *, operation_id: str | UUID | None = None, **fields: Any
+    ) -> Any:
         """Create share/embed configuration. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             fields: Additional fields; duplicate mapping keys are rejected.
             division_id: Persisted Division UUID.
 
@@ -1165,13 +1397,19 @@ class AsyncSettingsResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id), json=fields
+            "POST",
+            self._path.format(division_id=division_id),
+            json=fields,
+            operation_id=operation_id,
         )
 
-    async def update(self, division_id: str, **fields: Any) -> Any:
+    async def update(
+        self, division_id: str, *, operation_id: str | UUID | None = None, **fields: Any
+    ) -> Any:
         """Update share/embed configuration. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             fields: Additional fields; duplicate mapping keys are rejected.
             division_id: Persisted Division UUID.
 
@@ -1183,17 +1421,23 @@ class AsyncSettingsResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "PATCH", self._path.format(division_id=division_id), json=fields
+            "PATCH",
+            self._path.format(division_id=division_id),
+            json=fields,
+            operation_id=operation_id,
         )
 
 
 class AsyncEmbedResource(AsyncSettingsResource):
     """Division embed management, requiring agents:write."""
 
-    async def rotate_token(self, division_id: str) -> Any:
+    async def rotate_token(
+        self, division_id: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Rotate Token the embed token/state. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1204,13 +1448,17 @@ class AsyncEmbedResource(AsyncSettingsResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id) + "rotate-token/", json={}
+            "POST",
+            self._path.format(division_id=division_id) + "rotate-token/",
+            json={},
+            operation_id=operation_id,
         )
 
-    async def enable(self, division_id: str) -> Any:
+    async def enable(self, division_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Enable the embed token/state. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1221,13 +1469,17 @@ class AsyncEmbedResource(AsyncSettingsResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id) + "enable/", json={}
+            "POST",
+            self._path.format(division_id=division_id) + "enable/",
+            json={},
+            operation_id=operation_id,
         )
 
-    async def disable(self, division_id: str) -> Any:
+    async def disable(self, division_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Disable the embed token/state. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1238,17 +1490,21 @@ class AsyncEmbedResource(AsyncSettingsResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id) + "disable/", json={}
+            "POST",
+            self._path.format(division_id=division_id) + "disable/",
+            json={},
+            operation_id=operation_id,
         )
 
 
 class AsyncShareResource(AsyncSettingsResource):
     """Division share management, requiring agents:write."""
 
-    async def regenerate(self, division_id: str) -> Any:
+    async def regenerate(self, division_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Regenerate the share token/state. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1259,13 +1515,17 @@ class AsyncShareResource(AsyncSettingsResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id) + "regenerate/", json={}
+            "POST",
+            self._path.format(division_id=division_id) + "regenerate/",
+            json={},
+            operation_id=operation_id,
         )
 
-    async def revoke(self, division_id: str) -> Any:
+    async def revoke(self, division_id: str, *, operation_id: str | UUID | None = None) -> Any:
         """Revoke the share token/state. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1276,7 +1536,10 @@ class AsyncShareResource(AsyncSettingsResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path.format(division_id=division_id) + "revoke/", json={}
+            "POST",
+            self._path.format(division_id=division_id) + "revoke/",
+            json={},
+            operation_id=operation_id,
         )
 
 
@@ -1298,10 +1561,13 @@ class AsyncNeedingsResource(AsyncResource):
         """
         return await self._client._request("GET", f"divisions/{division_id}/needings")
 
-    async def sync(self, division_id: str, data: Mapping[str, Any]) -> Any:
+    async def sync(
+        self, division_id: str, data: Mapping[str, Any], *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Sync needings. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             data: Optional mapping of writable server fields.
             division_id: Persisted Division UUID.
 
@@ -1314,13 +1580,19 @@ class AsyncNeedingsResource(AsyncResource):
             ValueError: Duplicate payload fields or invalid local JSON configuration.
         """
         return await self._client._request(
-            "POST", f"divisions/{division_id}/needings/sync", json=dict(data)
+            "POST",
+            f"divisions/{division_id}/needings/sync",
+            json=dict(data),
+            operation_id=operation_id,
         )
 
-    async def discard(self, division_id: str, needing_id: str) -> Any:
+    async def discard(
+        self, division_id: str, needing_id: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Discard a needing. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
             needing_id: Persisted needing UUID.
 
@@ -1332,13 +1604,19 @@ class AsyncNeedingsResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "PATCH", f"divisions/{division_id}/needings/{needing_id}/discard", json={}
+            "PATCH",
+            f"divisions/{division_id}/needings/{needing_id}/discard",
+            json={},
+            operation_id=operation_id,
         )
 
-    async def satisfy(self, division_id: str, needing_id: str) -> Any:
+    async def satisfy(
+        self, division_id: str, needing_id: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Satisfy a needing. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
             needing_id: Persisted needing UUID.
 
@@ -1350,13 +1628,19 @@ class AsyncNeedingsResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "PATCH", f"divisions/{division_id}/needings/{needing_id}/satisfy", json={}
+            "PATCH",
+            f"divisions/{division_id}/needings/{needing_id}/satisfy",
+            json={},
+            operation_id=operation_id,
         )
 
-    async def reopen(self, division_id: str, needing_id: str) -> Any:
+    async def reopen(
+        self, division_id: str, needing_id: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Reopen a needing. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
             needing_id: Persisted needing UUID.
 
@@ -1368,7 +1652,10 @@ class AsyncNeedingsResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "PATCH", f"divisions/{division_id}/needings/{needing_id}/reopen", json={}
+            "PATCH",
+            f"divisions/{division_id}/needings/{needing_id}/reopen",
+            json={},
+            operation_id=operation_id,
         )
 
 
@@ -1618,10 +1905,12 @@ class AsyncUploadResource(AsyncResource):
         base_url: str | None = None,
         trust_url: bool = False,
         update: bool | None = None,
+        operation_id: str | UUID | None = None,
     ) -> Any:
         """Upload an OpenAPI/Swagger specification as multipart. Requires integrations:write and delete for removed definitions. Server validation controls supported formats.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             path: Local file to read and transmit; the handle closes after the request.
             name: Required integration name shown in the dashboard.
             base_url: Optional REST base URL override; defaults to None.
@@ -1650,12 +1939,16 @@ class AsyncUploadResource(AsyncResource):
                 **({"update": str(update).lower()} if update is not None else {}),
             },
             files={"file": (file_path.name, handle, "application/octet-stream")},
+            operation_id=operation_id,
         )
 
-    async def openapi_string(self, openapi_string: str) -> Any:
+    async def openapi_string(
+        self, openapi_string: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Import an OpenAPI string. Requires integrations:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             openapi_string: Complete OpenAPI/Swagger specification as a JSON or YAML string.
 
         Returns:
@@ -1669,12 +1962,21 @@ class AsyncUploadResource(AsyncResource):
             "POST",
             self._path + "integrations/openapi-string/",
             json={"openapi_string": openapi_string},
+            operation_id=operation_id,
         )
 
-    async def mcp(self, name: str, description: str, configuration: Mapping[str, Any] | str) -> Any:
+    async def mcp(
+        self,
+        name: str,
+        description: str,
+        configuration: Mapping[str, Any] | str,
+        *,
+        operation_id: str | UUID | None = None,
+    ) -> Any:
         """Upload MCP servers configuration or raw JSON. Requires integrations:write. OAuth start links are returned for user interaction.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             name: Required integration name shown in the dashboard.
             description: Required integration description shown in the dashboard.
             configuration: MCP servers mapping or raw JSON string; parsed locally before transmission.
@@ -1694,12 +1996,21 @@ class AsyncUploadResource(AsyncResource):
             "POST",
             self._path + "mcp/",
             json={"name": name, "description": description, "json_configuration": config},
+            operation_id=operation_id,
         )
 
-    async def scheduled_input(self, division_id: str, path: str | Path, **fields: Any) -> Any:
+    async def scheduled_input(
+        self,
+        division_id: str,
+        path: str | Path,
+        *,
+        operation_id: str | UUID | None = None,
+        **fields: Any,
+    ) -> Any:
         """Upload a scheduled input file for extraction. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             fields: Additional fields; duplicate mapping keys are rejected.
             division_id: Persisted Division UUID.
             path: Local file to read and transmit; the handle closes after the request.
@@ -1720,12 +2031,16 @@ class AsyncUploadResource(AsyncResource):
             self._path + f"divisions/{division_id}/scheduled-input-files/",
             data=fields,
             files={"file": (file_path.name, handle, "application/octet-stream")},
+            operation_id=operation_id,
         )
 
-    async def clear_scheduled_inputs(self, division_id: str) -> Any:
+    async def clear_scheduled_inputs(
+        self, division_id: str, *, operation_id: str | UUID | None = None
+    ) -> Any:
         """Clear the entire scheduled input file collection. Requires agents:write.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             division_id: Persisted Division UUID.
 
         Returns:
@@ -1736,7 +2051,10 @@ class AsyncUploadResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path + f"divisions/{division_id}/scheduled-input-files/", json={}
+            "POST",
+            self._path + f"divisions/{division_id}/scheduled-input-files/",
+            json={},
+            operation_id=operation_id,
         )
 
 
@@ -1945,10 +2263,13 @@ class AsyncMonitoringResource(AsyncResource):
             "GET", self._path + "monitoring/division-operations/sources/", params=query
         )
 
-    async def refresh_sources(self, **fields: Any) -> Any:
+    async def refresh_sources(
+        self, *, operation_id: str | UUID | None = None, **fields: Any
+    ) -> Any:
         """Query source health with an explicit refresh. Requires monitoring:read.
 
         Args:
+            operation_id: UUID identifying this dashboard write. The client supplies one by default.
             fields: Additional fields; duplicate mapping keys are rejected.
 
         Returns:
@@ -1959,7 +2280,10 @@ class AsyncMonitoringResource(AsyncResource):
             APIConnectionError: Network failure; no automatic retry occurs.
         """
         return await self._client._request(
-            "POST", self._path + "monitoring/division-operations/sources/", json=fields
+            "POST",
+            self._path + "monitoring/division-operations/sources/",
+            json=fields,
+            operation_id=operation_id,
         )
 
     async def background_run_by_message(self, message_id: str) -> Any:

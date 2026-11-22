@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Support managed dashboard writes in both clients with per-call operation UUIDs,
+  receipt lookup, deployment reconciliation, and recovery of the sent UUID on errors.
 - Add synchronous and asynchronous `sources.upload()` for Knowledge Base files,
   optional semantic retrieval configuration, and organization-scoped multipart
   ingestion. Replace files in place with `source_id` while retaining graph links.

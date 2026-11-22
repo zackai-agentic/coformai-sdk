@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Iterator, AsyncIterator, Mapping
 from pathlib import Path
 import json
+from uuid import UUID
 from pydantic import BaseModel
 from .graph import GraphMutationBuilder, GraphMutationRequest
 from .models import HistoryPair, InputItem, StreamMode
@@ -132,8 +133,18 @@ CLASSES["FunctionResource"] = ("CRUDResource", {"duplicate": entity_methods["dup
 def method(name, signature, result, expression, summary, before="", asynchronous=False):
     keyword = "async def" if asynchronous else "def"
     prefix = "await " if asynchronous else ""
+    write_calls = tuple(f'self._client._request("{verb}"' for verb in ("POST", "PUT", "PATCH", "DELETE"))
+    dashboard_write = expression.startswith(write_calls) and 'service="core"' not in expression
+    if dashboard_write:
+        # A keyword-only transport option must stay outside serializer fields and multipart data.
+        args, separator, extra = signature.partition(", **")
+        args += ", " if ", *, " in args else ", *, "
+        signature = args + "operation_id: str | UUID | None = None" + separator + extra
+        expression = expression.removesuffix(")") + ", operation_id=operation_id)"
     doc = summary + "\n\n        Args:\n            "
     parameters = []
+    if dashboard_write:
+        parameters.append("operation_id: UUID identifying this dashboard write. The client supplies one by default.")
     # Full signatures appear in the generated reference; descriptions cover shared contracts.
     if "resource_id" in signature:
         parameters.append("resource_id: Persisted UUID/ID from a server response.")
@@ -203,7 +214,7 @@ def generate(asynchronous=False):
             raise ValueError("Source name must not be blank")
         if enable_semantic_retrieval and max_tokens_in_chunk <= 0:
             raise ValueError("max_tokens_in_chunk must be positive")
-        metadata = {"name": name, "client": self._client.configuration.organization_id, "enable_semantic_retrieval": str(enable_semantic_retrieval).lower()}
+        metadata = {"name": name, "enable_semantic_retrieval": str(enable_semantic_retrieval).lower()}
         if description is not None:
             metadata["description"] = description
         if enable_semantic_retrieval:

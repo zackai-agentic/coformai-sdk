@@ -14,6 +14,8 @@ import httpx
 class CoformError(Exception):
     """Base exception for SDK transport and protocol failures."""
 
+    operation_id: str | None = None
+
 
 class APIStatusError(CoformError):
     """A server returned an unsuccessful HTTP status.
@@ -76,6 +78,10 @@ class RateLimitError(APIStatusError):
 class APIConnectionError(CoformError):
     """A connection failed; a mutation's outcome may be indeterminate."""
 
+    def __init__(self, message: str, *, operation_id: str | None = None) -> None:
+        super().__init__(message)
+        self.operation_id = operation_id
+
 
 class APITimeoutError(APIConnectionError):
     """A configured timeout expired; check session status before replaying work."""
@@ -85,11 +91,12 @@ class StreamProtocolError(CoformError):
     """An invocation stream contains invalid JSON or an invalid event envelope."""
 
 
-def check_status(response: httpx.Response) -> None:
+def check_status(response: httpx.Response, *, operation_id: str | None = None) -> None:
     """Validate HTTP success; callers must read a streaming error body first.
 
     Args:
         response: HTTP response containing status and readable diagnostics.
+        operation_id: UUID sent with a dashboard write, when applicable.
 
     Returns:
         None when the response is successful.
@@ -108,4 +115,6 @@ def check_status(response: httpx.Response) -> None:
         422: ValidationError,
         429: RateLimitError,
     }.get(response.status_code, APIStatusError)
-    raise error_type(response)
+    error = error_type(response)
+    error.operation_id = operation_id
+    raise error
